@@ -7,6 +7,12 @@
 .github
 .gitignore
 
+# Exclude jupyter
+.ipynb_checkpoints
+
+# Exclude cog
+.cog
+
 # Exclude Python cache files
 __pycache__/
 .mypy_cache
