@@ -21,6 +21,8 @@ build:
     - --extra-index-url https://download.pytorch.org/whl/cu118
     - torchaudio==2.0.2+cu118
     - --extra-index-url https://download.pytorch.org/whl/cu118
+    - safetensors
+    - sentencepiece
     - "https://github.com/jllllll/exllama/releases/download/0.0.9/exllama-0.0.9+cu118-cp310-cp310-linux_x86_64.whl"
 
   # commands run after the environment is setup
