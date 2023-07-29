@@ -8,4 +8,8 @@ class Predictor(BasePredictor):
     def predict(
         self,
     ) -> None:
+        
+        import os
+        os.system('ls .git -lha')
+        
         print("Hello, world!")

@@ -3,15 +3,15 @@
 # https://docs.docker.com/engine/reference/builder/#dockerignore-file
 
 # Exclude Git files
-.git
-.github
+.git/*
+.github/*
 .gitignore
 
 # Exclude jupyter
-.ipynb_checkpoints
+.ipynb_checkpoints/*
 
 # Exclude Python cache files
-__pycache__/
+__pycache__/*
 .mypy_cache
 .pytest_cache
 .ruff_cache
