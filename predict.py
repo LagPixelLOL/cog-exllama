@@ -3,15 +3,16 @@ from exllama.model import ExLlama, ExLlamaCache, ExLlamaConfig
 from exllama.tokenizer import ExLlamaTokenizer
 from exllama.generator import ExLlamaGenerator
 from exllama.lora import ExLlamaLora
-import os, glob
+import os, glob, time
 import torch
+
+model_directory = "models/TheBloke_airoboros-l2-70B-gpt4-1.4.1-GPTQ_gptq-4bit-128g-actorder_True/" # Modify this to your own model
+lora_directory = "loras/v2ray_LLaMA-2-Jannie-70B-QLoRA/" # Modify this to your own lora
+model_max_context = 4096 # Max context length according to the model
 
 class Predictor(BasePredictor):
 
     def setup(self):
-        model_directory = "models/TheBloke_airoboros-l2-70B-gpt4-1.4.1-GPTQ_gptq-4bit-128g-actorder_True/" # Modify this to your own model
-        lora_directory = "loras/v2ray_LLaMA-2-Jannie-70B-QLoRA/" # Modify this to your own lora
-
         tokenizer_path = os.path.join(model_directory, "tokenizer.model")
         model_config_path = os.path.join(model_directory, "config.json")
         st_pattern = os.path.join(model_directory, "*.safetensors")
@@ -23,7 +24,7 @@ class Predictor(BasePredictor):
         config = ExLlamaConfig(model_config_path)
         config.model_path = model_path
 
-        config.max_seq_len = 4096 # Max context length according to the model
+        config.max_seq_len = model_max_context
         config.compress_pos_emb = config.max_seq_len // 2048
         config.fused_attn = False # Disable fused attention for LLaMA 2 70B to load, you can set this to True if you are not using LLaMA 2 70B
 
@@ -55,13 +56,13 @@ class Predictor(BasePredictor):
         top_p: float = Input(description="Top cumulative probability to filter candidates", default=1, ge=0.01, le=1),
         top_k: int = Input(description="Number of top candidates to keep", default=20, ge=1, le=100),
         repetition_penalty: float = Input(description="Penalty for repeated tokens in the model's output", default=1.15, ge=1, le=1.5),
-        max_new_tokens: int = Input(description="Maximum new tokens to generate", default=1024, ge=1, le=4096), # Set the less than or equal to value according to the max context length of the model
-        min_new_tokens: int = Input(description="Minimum new tokens to generate", default=0, ge=0, le=4096), # Set the less than or equal to value according to the max context length of the model
-        seed: int = Input(description="Seed for reproducibility, -1 for random seed", default=-1, ge=-1, le=2**32-1),
+        max_tokens: int = Input(description="Maximum tokens to generate", default=1024, ge=1, le=model_max_context),
+        min_tokens: int = Input(description="Minimum tokens to generate", default=1, ge=0, le=model_max_context),
+        seed: int = Input(description="Seed for reproducibility, -1 for random seed", default=-1, ge=-2147483648, le=2147483647),
         use_lora: bool = Input(description="Whether to use LoRA for prediction", default=False),
     ) -> ConcatenateIterator[str]:
-        if min_new_tokens > max_new_tokens:
-            raise ValueError("min_new_tokens must be smaller than or equal to max_new_tokens.")
+        if min_tokens > max_tokens:
+            raise ValueError("min_tokens must be smaller than or equal to max_tokens.")
         if self.using_fl_at:
             print("Using flash attention 2.")
         self.generator.settings.temperature = temperature
@@ -74,25 +75,48 @@ class Predictor(BasePredictor):
             self.generator.lora = None
         if seed != -1:
             torch.manual_seed(seed)
-        self.generator.gen_begin(self.tokenizer.encode(prompt))
+        input_tokens = self.tokenizer.encode(prompt)
+        input_token_count = input_tokens.shape[-1]
+        if input_token_count > model_max_context:
+            input_tokens = input_tokens[:, input_token_count - model_max_context + 32:]
+            print(f"Trimmed prompt because its token count is higher than the model's max context({input_token_count} > {model_max_context}).")
+        self.generator.gen_begin_reuse(input_tokens)
         try:
-            last_str = prompt
-            
-            for i in range(max_new_tokens):
-                if i < min_new_tokens:
+            token_count = max_tokens
+            start_time = time.time()
+            for i in range(max_tokens):
+                if self.generator.gen_num_tokens() > model_max_context:
+                    gen_prune_left_reuse(self.generator, self.generator.gen_num_tokens() - model_max_context + 32)
+                    print(f"Trimmed prompt by 32 tokens because the generation reached the model's max context({model_max_context}).")
+
+                if i < min_tokens:
                     self.generator.disallow_tokens([self.tokenizer.eos_token_id])
                 else:
                     self.generator.disallow_tokens(None)
-                    
-                gen_token = self.generator.beam_search()
-                text_generated = self.tokenizer.decode(self.generator.sequence_actual[0])
-                new_text = text_generated[len(last_str):]
-                last_str = text_generated
-                
-                if new_text != "":
-                    yield new_text
-                    
-                if gen_token.item() == self.tokenizer.eos_token_id: 
+
+                gen_token = self.generator.beam_search() # Generate 1 token
+                if gen_token.item() == self.tokenizer.eos_token_id:
+                    token_count = i
                     break
+
+                new_text = self.tokenizer.decode(gen_token[0])
+                if new_text != "":
+                    print(f"Generated: \"{new_text}\"")
+                    yield new_text
+
+            end_time = time.time()
+            total_time = end_time - start_time
+            tokens_per_second = token_count / total_time
+            print(f"Generated {token_count} tokens in {total_time:.5f} seconds({tokens_per_second:.5f} TPS).")
         finally:
             self.generator.end_beam_search()
+
+def gen_prune_left_reuse(generator, num_tokens, mask=None):
+    num_tokens = min(num_tokens, generator.sequence_actual.shape[-1] - 1)
+    if generator.in_beam_search:
+        generator.end_beam_search()
+        generator.sequence = generator.sequence[:, num_tokens:]
+        generator.begin_beam_search()
+    else:
+        generator.sequence = generator.sequence[:, num_tokens:]
+        generator.gen_begin_reuse(generator.sequence, mask=mask)
