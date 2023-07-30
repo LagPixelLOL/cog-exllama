@@ -85,6 +85,7 @@ class Predictor(BasePredictor):
             token_count = max_tokens
             start_time = time.time()
             for i in range(max_tokens):
+                per_token_start_time = time.time()
                 if self.generator.gen_num_tokens() > model_max_context:
                     gen_prune_left_reuse(self.generator, self.generator.gen_num_tokens() - model_max_context + 32)
                     print(f"Trimmed prompt by 32 tokens because the generation reached the model's max context({model_max_context}).")
@@ -94,20 +95,21 @@ class Predictor(BasePredictor):
                 else:
                     self.generator.disallow_tokens(None)
 
+                prev_text = self.tokenizer.decode(self.generator.sequence_actual[0])
+
                 gen_token = self.generator.beam_search() # Generate 1 token
                 if gen_token.item() == self.tokenizer.eos_token_id:
                     token_count = i
                     break
 
-                new_text = self.tokenizer.decode(gen_token[0])
+                full_text = self.tokenizer.decode(self.generator.sequence_actual[0])
+                new_text = full_text[len(prev_text):]
                 if new_text != "":
-                    print(f"Generated: \"{new_text}\"")
+                    print(f"Time used: {int((time.time() - per_token_start_time) * 1000)}ms | Generated: \"{new_text}\"")
                     yield new_text
 
-            end_time = time.time()
-            total_time = end_time - start_time
-            tokens_per_second = token_count / total_time
-            print(f"Generated {token_count} tokens in {total_time:.5f} seconds({tokens_per_second:.5f} TPS).")
+            total_time = time.time() - start_time
+            print(f"Generated {token_count} tokens in {total_time:.5f} seconds({token_count / total_time:.5f} TPS).")
         finally:
             self.generator.end_beam_search()
 
