@@ -28,6 +28,7 @@ build:
   # commands run after the environment is setup
   run:
     - "wget https://huggingface.co/v2ray/xformers-wheels/resolve/main/xformers-torch2.0.1%2Bcu118-0.0.21.dev575-cp310-cp310-manylinux2014_x86_64.whl && pip3 install xformers-torch2.0.1+cu118-0.0.21.dev575-cp310-cp310-manylinux2014_x86_64.whl && rm -rf xformers-torch2.0.1+cu118-0.0.21.dev575-cp310-cp310-manylinux2014_x86_64.whl"
+    - "wget https://huggingface.co/v2ray/xformers-wheels/resolve/main/flash_attn-2.0.2-cp310-cp310-linux_x86_64.whl && pip3 install flash_attn-2.0.2-cp310-cp310-linux_x86_64.whl && rm -rf flash_attn-2.0.2-cp310-cp310-linux_x86_64.whl"
     - "pip3 cache purge && apt-get clean"
     - "echo env ready."
 
