@@ -23,6 +23,7 @@ build:
     - --extra-index-url https://download.pytorch.org/whl/cu118
     - safetensors
     - sentencepiece
+    - psutil
     - "https://github.com/jllllll/exllama/releases/download/0.0.9/exllama-0.0.9+cu118-cp310-cp310-linux_x86_64.whl"
 
   # commands run after the environment is setup

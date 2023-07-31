@@ -3,8 +3,9 @@ from exllama.model import ExLlama, ExLlamaCache, ExLlamaConfig
 from exllama.tokenizer import ExLlamaTokenizer
 from exllama.generator import ExLlamaGenerator
 from exllama.lora import ExLlamaLora
-import os, glob, time
+import os, glob, time, re
 import torch
+import psutil
 
 model_directory = "models/TheBloke_airoboros-l2-70B-gpt4-1.4.1-GPTQ_gptq-4bit-128g-actorder_True/" # Modify this to your own model
 lora_directory = "loras/v2ray_LLaMA-2-Jannie-70B-QLoRA/" # Modify this to your own lora
@@ -69,12 +70,14 @@ class Predictor(BasePredictor):
         self.generator.settings.top_p = top_p
         self.generator.settings.top_k = top_k
         self.generator.settings.token_repetition_penalty_max = repetition_penalty
+        if seed != -1:
+            torch.manual_seed(seed)
         if use_lora:
             self.generator.lora = self.lora
         else:
             self.generator.lora = None
-        if seed != -1:
-            torch.manual_seed(seed)
+        # self.generator.settings.beams = 1
+        # self.generator.settings.beam_length = 1
         input_tokens = self.tokenizer.encode(prompt)
         input_token_count = input_tokens.shape[-1]
         if input_token_count > model_max_context:
@@ -82,8 +85,12 @@ class Predictor(BasePredictor):
             print(f"Trimmed prompt because its token count is higher than the model's max context({input_token_count} > {model_max_context}).")
         self.generator.gen_begin_reuse(input_tokens)
         try:
-            token_count = max_tokens
             start_time = time.time()
+            token_count = max_tokens
+            str_hex_subchars = ""
+            highest_ram = current_ram_all()
+            highest_vram = current_vram_all()
+            self.generator.begin_beam_search()
             for i in range(max_tokens):
                 per_token_start_time = time.time()
                 if self.generator.gen_num_tokens() > model_max_context:
@@ -95,23 +102,71 @@ class Predictor(BasePredictor):
                 else:
                     self.generator.disallow_tokens(None)
 
-                prev_text = self.tokenizer.decode(self.generator.sequence_actual[0])
-
                 gen_token = self.generator.beam_search() # Generate 1 token
+                curr_ram = current_ram_all()
+                if curr_ram > highest_ram:
+                    highest_ram = curr_ram
+                curr_vram = current_vram_all()
+                if curr_vram > highest_vram:
+                    highest_vram = curr_vram
                 if gen_token.item() == self.tokenizer.eos_token_id:
                     token_count = i
                     break
 
-                full_text = self.tokenizer.decode(self.generator.sequence_actual[0])
-                new_text = full_text[len(prev_text):]
-                if new_text != "":
-                    print(f"Time used: {int((time.time() - per_token_start_time) * 1000)}ms | Generated: \"{new_text}\"")
+                token_str = self.generator.tokenizer.tokenizer.IdToPiece(int(gen_token))
+                if token_str.startswith("▁"):
+                    token_str = token_str.replace("▁", " ", 1)
+
+                text_generated = hex_to_utf8(token_str)
+                if "�" in text_generated:
+                    str_hex_subchars += token_str
+                    new_text = hex_to_utf8(str_hex_subchars)
+                    if "�" in new_text:
+                        new_text = None
+                    else:
+                        str_hex_subchars = ""
+                else:
+                    new_text = text_generated
+                    str_hex_subchars = ""
+
+                time_used_ms = int((time.time() - per_token_start_time) * 1000)
+                if new_text:
+                    print(f"Time used: {time_used_ms}ms | Generated: \"{new_text}\"")
                     yield new_text
+                else:
+                    print(f"Time used: {time_used_ms}ms | Generated: one piece of an UTF-8 character")
+                    
 
             total_time = time.time() - start_time
             print(f"Generated {token_count} tokens in {total_time:.5f} seconds({token_count / total_time:.5f} TPS).")
+            print(f"(RAM(MB): {int(highest_ram)} / {int(supported_ram_all())} | VRAM(MB): {int(highest_vram)} / {int(supported_vram_all())})")
         finally:
             self.generator.end_beam_search()
+
+def hex_to_utf8(hex_input):
+    if isinstance(hex_input, str):
+        hex_list = re.split(r'(<0x[\da-fA-F]{2}>)', hex_input)
+    elif isinstance(hex_input, list):
+        hex_list = hex_input
+    else:
+        raise ValueError("hex_input must be either a single string or a list of strings.")
+
+    byte_list = []
+    hex_pattern = re.compile(r'^<0x([\da-fA-F]{2})>$')
+    
+    for item in hex_list:
+        hex_match = hex_pattern.match(item)
+        if hex_match:
+            hex_value = hex_match.group(1)
+            int_value = int(hex_value, 16)
+            byte_list.append(int_value)
+        else:
+            utf8_encoded_item = item.encode('utf-8')
+            byte_list.extend(utf8_encoded_item)
+
+    utf8_bytes = bytes(byte_list)
+    utf8_string = utf8_bytes.decode('utf-8', errors='replace')
+    return utf8_string
 
 def gen_prune_left_reuse(generator, num_tokens, mask=None):
     num_tokens = min(num_tokens, generator.sequence_actual.shape[-1] - 1)
@@ -122,3 +177,27 @@ def gen_prune_left_reuse(generator, num_tokens, mask=None):
     else:
         generator.sequence = generator.sequence[:, num_tokens:]
         generator.gen_begin_reuse(generator.sequence, mask=mask)
+
+def current_ram_all():
+    ram_info = psutil.virtual_memory()
+    used_ram = ram_info.used / (1024 ** 2)
+    return used_ram
+
+def supported_ram_all():
+    ram_info = psutil.virtual_memory()
+    total_ram = ram_info.total / (1024 ** 2)
+    return total_ram
+
+def current_vram_all():
+    total_vram = 0
+    for dev_id in range(torch.cuda.device_count()):
+        gpu_mem = torch.cuda.memory_allocated(dev_id)
+        total_vram += gpu_mem / (1024 ** 2)
+    return total_vram
+
+def supported_vram_all():
+    total_supported_vram = 0
+    for dev_id in range(torch.cuda.device_count()):
+        gpu_supported_mem = torch.cuda.get_device_properties(dev_id).total_memory
+        total_supported_vram += gpu_supported_mem / (1024 ** 2)
+    return total_supported_vram
