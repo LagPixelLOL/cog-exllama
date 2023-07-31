@@ -113,10 +113,7 @@ class Predictor(BasePredictor):
                     token_count = i
                     break
 
-                token_str = self.generator.tokenizer.tokenizer.IdToPiece(int(gen_token))
-                if token_str.startswith("▁"):
-                    token_str = token_str.replace("▁", " ", 1)
-
+                token_str = self.generator.tokenizer.tokenizer.IdToPiece(int(gen_token)).replace("▁", " ")
                 text_generated = hex_to_utf8(token_str)
                 if "�" in text_generated:
                     str_hex_subchars += token_str
