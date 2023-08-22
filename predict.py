@@ -7,7 +7,7 @@ import os, glob, time, re
 import torch
 import psutil
 
-model_directory = "models/TheBloke_airoboros-l2-70B-gpt4-1.4.1-GPTQ_gptq-4bit-128g-actorder_True/" # Modify this to your own model
+model_directory = "models/TheBloke_Airoboros-L2-70B-GPT4-m2.0-GPTQ_gptq-4bit-32g-actorder_True/" # Modify this to your own model
 lora_directory = "loras/v2ray_LLaMA-2-Jannie-70B-QLoRA/" # Modify this to your own lora
 model_max_context = 4096 # Max context length according to the model
 
@@ -26,7 +26,7 @@ class Predictor(BasePredictor):
         config.model_path = model_path
 
         config.max_seq_len = model_max_context
-        config.compress_pos_emb = config.max_seq_len // 2048
+        config.compress_pos_emb = 1
         config.fused_attn = False # Disable fused attention for LLaMA 2 70B to load, you can set this to True if you are not using LLaMA 2 70B
 
         self.using_fl_at = False
