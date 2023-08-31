@@ -7,7 +7,7 @@ import os, glob, time, re
 import torch
 import psutil
 
-model_directory = "models/TheBloke_Airoboros-L2-70B-GPT4-m2.0-GPTQ_gptq-4bit-32g-actorder_True/" # Modify this to your own model
+model_directory = "models/TheBloke_Airoboros-L2-70B-2.1-GPTQ_gptq-4bit-32g-actorder_True/" # Modify this to your own model
 lora_directory = "loras/v2ray_LLaMA-2-Jannie-70B-QLoRA/" # Modify this to your own lora
 model_max_context = 4096 # Max context length according to the model
 

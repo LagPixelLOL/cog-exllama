@@ -24,7 +24,7 @@ build:
     - safetensors
     - sentencepiece
     - psutil
-    - "https://github.com/jllllll/exllama/releases/download/0.0.12/exllama-0.0.12+cu118-cp310-cp310-linux_x86_64.whl"
+    - "https://github.com/jllllll/exllama/releases/download/0.0.14/exllama-0.0.14+cu118-cp310-cp310-linux_x86_64.whl"
 
   # commands run after the environment is setup
   run:
