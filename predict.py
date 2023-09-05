@@ -8,7 +8,7 @@ import torch
 import psutil
 
 model_directory = "models/TheBloke_Airoboros-L2-70B-2.1-GPTQ_gptq-4bit-32g-actorder_True/" # Modify this to your own model
-lora_directory = "loras/v2ray_LLaMA-2-Jannie-70B-QLoRA/" # Modify this to your own lora
+lora_directory = "loras/v2ray_Airoboros-2.1-Jannie-70B-QLoRA/" # Modify this to your own lora
 model_max_context = 4096 # Max context length according to the model
 
 class Predictor(BasePredictor):
@@ -56,7 +56,7 @@ class Predictor(BasePredictor):
         temperature: float = Input(description="Temperature of the output, it's best to keep it below 1", default=0.5, ge=0.01, le=2),
         top_p: float = Input(description="Top cumulative probability to filter candidates", default=1, ge=0.01, le=1),
         top_k: int = Input(description="Number of top candidates to keep", default=20, ge=1, le=100),
-        repetition_penalty: float = Input(description="Penalty for repeated tokens in the model's output", default=1.15, ge=1, le=1.5),
+        repetition_penalty: float = Input(description="Penalty for repeated tokens in the model's output", default=1, ge=1, le=1.5),
         max_tokens: int = Input(description="Maximum tokens to generate", default=1024, ge=1, le=model_max_context),
         min_tokens: int = Input(description="Minimum tokens to generate", default=1, ge=0, le=model_max_context),
         seed: int = Input(description="Seed for reproducibility, -1 for random seed", default=-1, ge=-2147483648, le=2147483647),
